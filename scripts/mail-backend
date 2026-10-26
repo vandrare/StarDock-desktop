@@ -1,0 +1,6 @@
+#!/bin/sh
+# Omamail v0.11.1's pinned v0.11.0 backend, with dashboard-only storage.
+export XDG_CONFIG_HOME="$HOME/.config/starlink-dashboard/mail"
+export XDG_CACHE_HOME="$HOME/.cache/starlink-dashboard/mail"
+export XDG_STATE_HOME="$HOME/.local/state/starlink-dashboard/mail"
+exec "$HOME/.local/share/starlink-dashboard/mail/runtime-data/omamail/bin/omamail" "$@"

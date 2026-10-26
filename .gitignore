@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.log
+.DS_Store
+.env
+.env.*
+node_modules/
+vendor/omamail/target/
+vendor/omamail/runtime/
+vendor/omamail/app/build/
+vendor/omamail/.git/
