@@ -43,6 +43,8 @@ QtObject {
   property var eventSuggestions:[]
   property bool showsRail:false
   property bool canOpenOnWeb:false
+  property int unsubscribeCount:0
+  function unsubscribe(){unsubscribeCount++}
   property string unsubscribeLabel:""
   property string unsubscribeDetail:""
   property bool unsubscribing:false

@@ -609,9 +609,10 @@ Item {
       // Stays up after the deed is done, saying what was done. A control that
       // vanishes under the pointer reads as a misclick, and "did that work?"
       // is a question the user may come back to this message to ask.
-      visible: !!root.summary && root.unsubscribeDetail !== ""
+      objectName: "readerUnsubscribeNotice"
+      visible: !root.embeddedBody && !!root.summary && root.unsubscribeDetail !== ""
       text: root.unsubscribeDetail
-      actionLabel: root.unsubscribeLabel
+      actionLabel: root.embeddedBody ? "" : root.unsubscribeLabel
       busy: root.unsubscribing
       busyLabel: "Unsubscribing..."
       textColor: root.textColor
@@ -922,7 +923,7 @@ Item {
         + viewTools.implicitWidth + Style.space(24) > width
       implicitHeight: stacked
         ? messageActions.implicitHeight + Style.space(4) + viewTools.implicitHeight
-        : messageActions.implicitHeight
+        : Math.max(messageActions.implicitHeight, viewTools.implicitHeight)
 
       Item {
         id: messageActions
@@ -1045,12 +1046,18 @@ Item {
         objectName: "readerViewTools"
         anchors.right: parent.right
         y: actionsRow.stacked ? messageActions.height + Style.space(4) : 0
-        implicitWidth: modeTrack.width
+        readonly property real modeWidth: modeTrack.width
           + (openWebButton.visible ? Style.space(6) + openWebButton.width : 0)
+        readonly property bool wrapUnsubscribe: unsubscribeButton.visible
+          && modeWidth + Style.space(6) + unsubscribeButton.width > actionsRow.width
+        implicitWidth: wrapUnsubscribe ? Math.max(modeWidth, unsubscribeButton.width)
+          : modeWidth + (unsubscribeButton.visible ? Style.space(6) + unsubscribeButton.width : 0)
         implicitHeight: Math.max(modeTrack.height,
-          openWebButton.visible ? openWebButton.height : 0)
+          openWebButton.visible ? openWebButton.height : 0,
+          !wrapUnsubscribe && unsubscribeButton.visible ? unsubscribeButton.height : 0)
+          + (wrapUnsubscribe ? Style.space(4) + unsubscribeButton.height : 0)
         width: implicitWidth
-        height: actionsRow.stacked ? implicitHeight : messageActions.height
+        height: actionsRow.stacked || wrapUnsubscribe ? implicitHeight : messageActions.height
         readonly property bool controlsAligned: !openWebButton.visible
           || Math.abs((modeTrack.y + modeTrack.height / 2)
             - (openWebButton.y + openWebButton.height / 2)) < 1
@@ -1061,7 +1068,7 @@ Item {
         Rectangle {
           id: modeTrack
           objectName: "bodyModeTrack"
-          y: Math.round((parent.height - height) / 2)
+          y: viewTools.wrapUnsubscribe ? 0 : Math.round((parent.height - height) / 2)
           width: modeSegments.implicitWidth
           height: modeSegments.implicitHeight
           radius: Style.cornerRadius
@@ -1091,6 +1098,24 @@ Item {
               mode: "plain"
             }
           }
+        }
+
+        Button {
+          id: unsubscribeButton
+          objectName: "readerUnsubscribe"
+          visible: root.embeddedBody && !!root.summary && root.unsubscribeLabel !== ""
+          enabled: !root.unsubscribing
+          x: viewTools.wrapUnsubscribe ? 0 : viewTools.modeWidth + Style.space(6)
+          y: viewTools.wrapUnsubscribe ? modeTrack.height + Style.space(4) : modeTrack.y
+          text: root.unsubscribing ? "Unsubscribing..." : root.unsubscribeLabel
+          foreground: root.textColor
+          accent: root.accentColor
+          fontFamily: root.panelFontFamily
+          fontSize: Style.font.caption
+          horizontalPadding: Style.space(7)
+          verticalPadding: Style.space(3)
+          tooltipText: root.unsubscribeDetail
+          onClicked: if(root.service)root.service.unsubscribe()
         }
 
         // A separate action on the same toolbar. Its centre follows the mode

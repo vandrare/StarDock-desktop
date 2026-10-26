@@ -137,6 +137,25 @@ ShellRoot {
       var shell=find(panel,"mailComposeShell")
       return !shell.composing && !fixture.backend.record.active ? "PASS: sent receipt prevents draft reopening or resend" : "FAIL: sent draft reopened"
     }
+    function seedUnsubscribe():string {
+      fixture.htmlSource="<p>Synthetic newsletter</p>"
+      fixture.unsubscribeLabel="Unsubscribe"
+      fixture.unsubscribeDetail="Leave this synthetic mailing list"
+      return "PASS"
+    }
+    function verifyUnsubscribeToolbar():string {
+      var button=find(panel,"readerUnsubscribe")
+      var modes=find(panel,"bodyModeTrack")
+      if(!button || !button.visible || !modes || !modes.visible)return "FAIL: missing toolbar controls"
+      if(Math.abs(button.mapToItem(panel,0,0).y-modes.mapToItem(panel,0,0).y)>1)return "FAIL: unsubscribe not on mode row"
+      if(find(panel,"readerUnsubscribeNotice").visible)return "FAIL: redundant unsubscribe status strip"
+      if(find(panel,"messageBodyScroller").y>1)return "FAIL: removed notice still reserves space"
+      var before=fixture.unsubscribeCount
+      button.clicked()
+      if(fixture.unsubscribeCount!==before+1)return "FAIL: unsubscribe action not routed"
+      fixture.unsubscribeLabel="";fixture.unsubscribeDetail="";fixture.htmlSource=""
+      return "PASS: toolbar unsubscribe uses existing service action"
+    }
     function verifyInitialMessage():string {
       return fixture.selectedId===fixture.messages[0].id && !!fixture.selectedMessage && find(panel,"mailReader").visible ? "PASS: first message loaded automatically" : "FAIL: first message not loaded"
     }

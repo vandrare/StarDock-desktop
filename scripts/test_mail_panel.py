@@ -28,6 +28,8 @@ def main():
         settle()
         assert call("verifyInitialMessage").startswith("PASS")
         assert call("verifyStyle").startswith("PASS")
+        call("seedUnsubscribe"); settle()
+        assert call("verifyUnsubscribeToolbar").startswith("PASS")
         for mode in ['reply', 'replyAll', 'forward']:
             call('compose',mode); settle()
             draft = json.loads(call('inspectCompose'))['draft']
