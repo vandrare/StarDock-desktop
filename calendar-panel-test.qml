@@ -7,6 +7,7 @@ import "vendor/omamail/ui/calendar/Calendar.js" as Calendar
 import "vendor/omamail/ui/calendar/Sources.js" as Sources
 ShellRoot {
   id:root
+  PopupAppearanceManager {id:popupStyles;target:panel;overlay:panel.Overlay.overlay;appearance:({shadowSize:28,shadowColor:"#123456",overlayOpacity:55});backgroundColor:"#071426";borderColor:"#304050"}
   property int beforeDelete:0
   property string leaveResult:"pending"
   QtObject {
@@ -102,6 +103,17 @@ ShellRoot {
   function find(item,name) {if(item.objectName===name)return item;var children=item.children || [];for(var i=0;i<children.length;i++){var found=find(children[i],name);if(found)return found}return null}
   IpcHandler {
     target:"calendartest"
+    function verifyPopupAppearance():string {
+      popupStyles.scan()
+      var deleteConfirmation=false
+      for(var i=0;i<popupStyles.styled.length;i++){
+        var popup=popupStyles.styled[i]
+        if(popup.background.settings.shadowSize!==28 || popup.background.settings.shadowColor!=="#123456")return "FAIL: inconsistent popup appearance"
+        if(popup.parent && popup.parent.choices!==undefined && typeof popup.parent.confirm==="function")deleteConfirmation=true
+      }
+      return deleteConfirmation?"PASS: global appearance includes calendar delete confirmation":"FAIL: delete popup not styled"
+    }
+
     function view(mode:string):string {var view=find(panel,"nativeCalendarView");view.setView(mode);if(view.viewMode!==mode)return "FAIL: mode";return "PASS: "+mode}
     function details():string {panel.openEvent(controller.events[0]);return "PASS: requested details"}
     function verify():string {var view=find(panel,"nativeCalendarView");if(!view.detailOpen)return "FAIL: no details";return "PASS: event details"}

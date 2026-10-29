@@ -30,7 +30,7 @@ PREFS=set('refreshIntervalSec maxMessages heavyMessageRendering contentDirection
 WINDOW=set('sidebarCollapsed sidebarWidth listWidth collapsedFolders bodyZoom bodyMode alwaysShowImages'.split())
 CALENDAR=set('id kind name url username accountId enabled calendarId readOnly discovered colorKey accessRole timeZone canCreateMeet defaultReminders remindersEnabled reminderMinutes preferred'.split())
 ACCOUNT=set('id label senderName signature signatureHtml monitored'.split())
-DASHBOARD=set('enabledModules fullscreenTitleSize clock colors textScale mainPanel rss popupWidthPercent weather overview'.split())
+DASHBOARD=set('popupAppearance fontSizes sidebarWidthPercent enabledModules fullscreenTitleSize clock colors textScale mainPanel rss popupWidthPercent weather overview'.split())
 
 def now():return dt.datetime.now(dt.timezone.utc).isoformat()
 def encode(value):return (json.dumps(value,ensure_ascii=False,indent=2)+'\n').encode()
@@ -78,9 +78,11 @@ def sanitize(key,value):
     if key=='dashboard':
         out=pick(value,DASHBOARD)
         if 'rss' in out:
-            rss=pick(out['rss'],{'feeds','scrollSpeed','maxWords'})
+            rss=pick(out['rss'],{'enabled','feeds','scrollSpeed','maxWords'})
             rss['feeds']=[{'url':clean_url(feed.get('url')),'count':feed.get('count',10)} for feed in rss.get('feeds',[]) if isinstance(feed,dict) and clean_url(feed.get('url'))]
             out['rss']=rss
+        if 'popupAppearance' in out:out['popupAppearance']=pick(out['popupAppearance'],{'shadowSize','shadowColor','overlayOpacity'})
+        if 'fontSizes' in out:out['fontSizes']={k:v for k,v in pick(out['fontSizes'],{'emailBody','notesBody','summaries','rssBody','rssHeadline'}).items() if type(v) in (int,float) and 0<v<=100}
         if 'colors' in out:out['colors']=pick(out['colors'],{'background','foreground','accent'})
         if 'clock' in out:out['clock']=pick(out['clock'],{'fontSize','hourFormat','dateFormat'})
         if 'weather' in out:out['weather']=pick(out['weather'],set('location latitude longitude countryCode temperatureUnit units refreshMinutes mapZoom'.split()))

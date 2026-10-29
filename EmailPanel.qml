@@ -18,6 +18,9 @@ Item {
   property color muted
   property color edge
   property string fontFamily
+  property real bodyFontSize:14
+  property real messageListFontSize:12
+  readonly property real messageListScale:textScale*messageListFontSize/12
   property real textScale: 1
   property string dateFormat:"MMM d, yyyy"
   property string timeFormat:"h:mm AP"
@@ -101,8 +104,6 @@ Item {
     Layout.minimumWidth: 0
     spacing: 12
     Loader { sourceComponent: root.heading; Layout.fillWidth: true }
-    MailButton { objectName:"mailCompose"; text:"Compose…"; Layout.fillWidth:true; enabled:root.connected && root.service.canSend; onClicked:root.startCompose("new") }
-    MailButton { objectName:"mailAddAccount"; text:"+ Account…"; Layout.fillWidth:true; enabled:root.backendReady; onClicked:root.setup(true) }
     ScrollView {
       id: accountsScroll
       Layout.fillWidth:true; Layout.fillHeight:true; clip:true; rightPadding:24; contentWidth:availableWidth
@@ -135,7 +136,6 @@ Item {
         }
       }
     }
-    MailButton { text:"Accounts & settings…"; Layout.fillWidth:true; enabled:root.backendReady; onClicked:root.accountsRequested() }
   }
   ColumnLayout {
     Layout.fillWidth:true; Layout.fillHeight:true
@@ -146,6 +146,7 @@ Item {
       Layout.fillWidth:true
       MailButton { text:"Back"; visible:!root.splitReader && !!root.selected; onClicked:root.service.clearSelection() }
       Label { text:root.service ? (root.service.accountEmail || "Email") : "Email"; color:root.fg; font.bold:true; font.pixelSize:14*root.textScale; Layout.fillWidth:true; elide:Text.ElideRight }
+      MailAction {objectName:"mailComposeCompact";iconName:"compose";hint:"Compose…";visible:!root.splitReader && !root.selected && root.connected;enabled:root.connected && root.service.canSend;onClicked:root.startCompose("new")}
       MailAction { objectName:"mailRefresh"; iconName:"refresh";hint:"Refresh"; enabled:root.connected; onClicked:root.service.refresh() }
     }
     Label {
@@ -197,11 +198,11 @@ Item {
                 RowLayout {
                   Layout.fillWidth:true
                   spacing:8
-                  Label { objectName:"mailSender"+messageRow.index; text:(messageRow.modelData.unread ? "● " : "")+(messageRow.modelData.from ? messageRow.modelData.from.display : ""); textFormat:Text.PlainText; color:root.accent; font.bold:messageRow.modelData.unread; font.pixelSize:11*root.textScale; Layout.fillWidth:true; Layout.minimumWidth:0; elide:Text.ElideRight }
+                  Label { objectName:"mailSender"+messageRow.index; text:(messageRow.modelData.unread ? "● " : "")+(messageRow.modelData.from ? messageRow.modelData.from.display : ""); textFormat:Text.PlainText; color:root.accent; font.bold:messageRow.modelData.unread; font.pixelSize:11*root.messageListScale; Layout.fillWidth:true; Layout.minimumWidth:0; elide:Text.ElideRight }
                   Label {
                     objectName:"mailReceivedDate"+messageRow.index
                     text:root.receivedDate(messageRow.modelData)
-                    color:root.muted;font.pixelSize:10*root.textScale
+                    color:root.muted;font.pixelSize:10*root.messageListScale
                     Layout.maximumWidth:parent.width*.5
                     horizontalAlignment:Text.AlignRight;elide:Text.ElideRight
                     ToolTip.visible:dateHover.hovered
@@ -209,8 +210,8 @@ Item {
                     HoverHandler {id:dateHover}
                   }
                 }
-                Label { objectName:"mailMessageTitle"+messageRow.index; text:messageRow.modelData.subject || "(No subject)"; textFormat:Text.PlainText; color:root.fg; font.bold:messageRow.modelData.unread; font.pixelSize:12*root.textScale; Layout.fillWidth:true; wrapMode:Text.Wrap; maximumLineCount:2; elide:Text.ElideRight }
-                Label { text:messageRow.modelData.snippet || ""; textFormat:Text.PlainText; color:root.muted; font.pixelSize:10*root.textScale; Layout.fillWidth:true; elide:Text.ElideRight }
+                Label { objectName:"mailMessageTitle"+messageRow.index; text:messageRow.modelData.subject || "(No subject)"; textFormat:Text.PlainText; color:root.fg; font.bold:messageRow.modelData.unread; font.pixelSize:12*root.messageListScale; Layout.fillWidth:true; wrapMode:Text.Wrap; maximumLineCount:2; elide:Text.ElideRight }
+                Label { text:messageRow.modelData.snippet || ""; textFormat:Text.PlainText; color:root.muted; font.pixelSize:10*root.messageListScale; Layout.fillWidth:true; elide:Text.ElideRight }
               }
             }
           }
@@ -231,16 +232,18 @@ Item {
           Label { text:root.selected ? root.receivedDate(root.selected) : "";color:root.muted;font.pixelSize:10*root.textScale;horizontalAlignment:Text.AlignRight }
         }
         Flow {
+          objectName:"mailMessageToolbar"
           Layout.fillWidth:true
           Layout.preferredHeight:childrenRect.height
           spacing:6
-          visible:!!root.selected
+          visible:root.connected
+          MailAction {objectName:"mailCompose";iconName:"compose";hint:"Compose…";enabled:root.connected && root.service.canSend;onClicked:root.startCompose("new")}
+          MailAction {objectName:"mailTrash";iconName:root.trashAction==="untrash"?"undo":"trash";hint:root.trashAction==="untrash"?"Restore":"Delete (move to trash)";enabled:root.detailReady;onClicked:root.messageAction(root.trashAction)}
           MailAction {objectName:"mailEditDraft";iconName:"compose";hint:"Edit draft…";visible:!!root.selected && root.selected.isDraft===true;enabled:root.detailReady && root.service.canSend;onClicked:root.startCompose("draft")}
           MailAction {objectName:"mailReply";iconName:"reply";hint:"Reply…";visible:!root.selected || root.selected.isDraft!==true;enabled:root.detailReady && root.service.canSend;onClicked:root.startCompose("reply")}
           MailAction {objectName:"mailReplyAll";iconName:"replyAll";hint:"Reply all…";visible:!root.selected || root.selected.isDraft!==true;enabled:root.detailReady && root.service.canSend;onClicked:root.startCompose("replyAll")}
           MailAction {objectName:"mailForward";iconName:"forward";hint:"Forward…";enabled:root.detailReady && root.service.canSend;onClicked:root.startCompose("forward")}
           MailAction {objectName:"mailArchive";iconName:root.archiveAction==="unarchive"?"inbox":"archive";hint:MailModel.actionName(root.archiveAction);visible:!!root.service && root.service.canArchive;enabled:root.detailReady;onClicked:root.messageAction(root.archiveAction)}
-          MailAction {objectName:"mailTrash";iconName:root.trashAction==="untrash"?"undo":"trash";hint:MailModel.actionName(root.trashAction);enabled:root.detailReady;onClicked:root.messageAction(root.trashAction)}
           MailAction {objectName:"mailMarkRead";iconName:root.selected && root.selected.unread?"check":"unread";hint:root.selected && root.selected.unread ? "Mark read" : "Mark unread";enabled:root.detailReady;onClicked:root.messageAction(root.selected.unread?"markRead":"markUnread")}
           MailAction {objectName:"mailStar";iconName:"star";checked:!!root.selected && root.selected.starred;hint:root.selected && root.selected.starred ? "Unstar" : "Star";visible:!!root.service && root.service.canStar;enabled:root.detailReady;onClicked:root.messageAction("star")}
         }
@@ -256,7 +259,7 @@ Item {
           dimColor:root.muted;dimmerColor:root.muted;popupBackgroundColor:root.bg;popupBorderColor:root.edge
           leadingBoundaryOverlap:0;panelFontFamily:root.fontFamily
           bodyMode:root.service ? root.service.bodyMode : "reader"
-          zoom:(root.service ? root.service.bodyZoom : 1)*root.textScale*12/Style.font.body
+          zoom:(root.service ? root.service.bodyZoom : 1)*root.textScale*root.bodyFontSize/Style.font.body
           alwaysRenderHeavyMessages:!!root.service && root.service.alwaysRenderHeavyMessages
           contentDirection:root.service ? root.service.contentDirection : "Auto"
           onBodyModeRequested:function(mode){if(root.service)root.service.setBodyMode(mode)}
@@ -270,7 +273,9 @@ Item {
       }
     }
     Label {
-      text:root.service ? (composeShell.notice || root.service.lastError || root.service.backend.failure || root.service.activityStatus || (root.connected ? root.service.inboxUnread+" unread · HTML / reading / plain text" : "Powered by StarMail")) : ""
+      objectName:"mailStatusNotice"
+      visible:text.length>0
+      text:root.service ? (composeShell.notice || root.service.lastError || root.service.backend.failure || "") : ""
       color:root.muted; textFormat:Text.PlainText; font.pixelSize:10*root.textScale; Layout.fillWidth:true; wrapMode:Text.Wrap
     }
   }

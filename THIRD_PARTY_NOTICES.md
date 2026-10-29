@@ -15,3 +15,5 @@ Local calendar UI patches expose week-start and date/time preferences, default e
 The Email module embeds Omamail’s MessageReader and reuses its sanitized document layout, image policies, context menus and attachments. Local optional properties hide duplicate chrome and offer current-message image approval; The dashboard service host delegates that approval to the existing account method. Mailto draft integration uses the upstream parser.
 
 The embedded dashboard presents the mail integration as StarMail. Local presentation copy and the service display name use this branding; upstream identifiers, storage paths, backend pins and license notices remain intact.
+
+Local notification adapters provide an optional host callback for the embedded mail service while preserving upstream plugin and standalone notification paths. StarDock supplies its own escaped `notify-send` transport and retains the existing account ownership checks.

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import Quickshell
 import Quickshell.Io
 import "tests" as Fixtures
@@ -8,6 +9,7 @@ ShellRoot {
   property string flushResult:""
   property int htmlSerial:0
   Fixtures.MailFixture { id: fixture }
+  PopupAppearanceManager {id:popupStyles;target:testRoot.panel;overlay:testRoot.panel?testRoot.panel.Overlay.overlay:null;appearance:({shadowSize:28,shadowColor:"#123456",overlayOpacity:55});backgroundColor:"#071426";borderColor:"#304050"}
   FloatingWindow {
     title:"Starlink Mail Integration Test"
     color:"#071426"
@@ -156,11 +158,27 @@ ShellRoot {
       fixture.unsubscribeLabel="";fixture.unsubscribeDetail="";fixture.htmlSource=""
       return "PASS: toolbar unsubscribe uses existing service action"
     }
+    function verifyPopupAppearance():string {
+      popupStyles.scan()
+      var draftConfirmation=false
+      for(var i=0;i<popupStyles.styled.length;i++){
+        var popup=popupStyles.styled[i]
+        if(popup.background.settings.shadowSize!==28 || popup.background.settings.shadowColor!=="#123456")return "FAIL: inconsistent popup appearance"
+        if(popup.parent && popup.parent.currentDraftKey!==undefined)draftConfirmation=true
+      }
+      return draftConfirmation?"PASS: global appearance includes draft confirmations":"FAIL: draft popup not styled"
+    }
     function verifyInitialMessage():string {
       return fixture.selectedId===fixture.messages[0].id && !!fixture.selectedMessage && find(panel,"mailReader").visible ? "PASS: first message loaded automatically" : "FAIL: first message not loaded"
     }
     function verifyStyle():string {
       fixture.select("fixture-message")
+      var backdrop=find(panel,"readerFooterBackdrop")
+      var body=find(panel,"messageBodyScroller")
+      var notice=find(panel,"mailStatusNotice")
+      if(!backdrop || backdrop.color.a!==0)return "FAIL: reader toolbar background"
+      if(body.y+body.height>backdrop.y+1)return "FAIL: body overlaps reading controls"
+      if(notice.visible)return "FAIL: empty status reserves space"
       var row=find(panel,"mailMessage0")
       var date=find(panel,"mailReceivedDate0")
       var sender=find(panel,"mailSender0")
@@ -170,6 +188,13 @@ ShellRoot {
       if(date.mapToItem(panel,0,0).x<=sender.mapToItem(panel,0,0).x)return "FAIL: date should be to the right of sender"
       var reply=find(panel,"mailReply")
       if(reply.text!=="" || reply.Accessible.name!=="Reply…")return "FAIL: accessible icon action"
+      var compose=find(panel,"mailCompose")
+      if(!compose || compose.parent!==reply.parent || compose.width!==reply.width || compose.height!==reply.height || compose.text!=="" || compose.Accessible.name!=="Compose…")return "FAIL: compose toolbar icon"
+      if(find(panel,"mailAddAccount"))return "FAIL: account creation still in mail sidebar"
+      var trash=find(panel,"mailTrash")
+      if(!trash || !trash.visible || !trash.enabled || trash.Accessible.name!=="Delete (move to trash)" || trash.y!==compose.y || trash.x<=compose.x || trash.x>=reply.x)return "FAIL: visible Delete action beside Compose"
+
+
       return "PASS: message separators, right-aligned received date and accessible icon actions"
     }
     function html(source:string):string {
@@ -180,6 +205,10 @@ ShellRoot {
       var reader=find(panel,"mailReader");reader.bodyModeRequested(mode)
       if(fixture.bodyMode!==mode)return "FAIL: reader mode not saved"
       return "PASS: reader mode"
+    }
+    function contentFonts(body:int,list:int,scale:real):string {
+      panel.bodyFontSize=body;panel.messageListFontSize=list;panel.textScale=scale
+      return "PASS: content fonts updated"
     }
     function readerState():string {
       var reader=find(panel,"mailReader");var body=null

@@ -12,6 +12,7 @@ Item {
   readonly property string home: Quickshell.env("HOME")
   property bool windowOpen: false
   property bool calendarEnabled: true
+  property bool emailEnabled: true
   readonly property alias calendarEvents: upcoming.events
   function refreshUpcoming() {
     upcoming.sourceList=mail.calendarController.sourceList
@@ -83,6 +84,7 @@ Item {
     function showMessageImages(){if(mail.reading)mail.reading.showRemoteImages()}
     // The v0.11.1 UI release deliberately pins backend 0.11.0, API 7.
     manifest: ({id:"starlink-dashboard-mail",name:"StarMail",version:"0.11.0"})
+    notificationHandler:function(accountId,messageId,title,body){if(root.emailEnabled)mailNotifications.notify(accountId,messageId,title,body)}
     platform: host
     shell: host
     windowOpen: root.windowOpen
@@ -93,12 +95,17 @@ Item {
       backendRuntime.unreleasedMethods=["m365.signInBegin","m365.signInPoll","m365.signOut","m365.verify","m365.list","m365.messages","m365.read","m365.attachment","m365.modify","m365.trash","m365.untrash","m365.send","m365.saveDraft","m365.deleteDraft","m365.sendAs","m365.invalidate","m365.cancel"]
     }
   }
+  MailNotifications {
+    id:mailNotifications
+    onActivated:function(accountId,messageId){if(mail.findAccount(accountId))mail.openNotification(accountId,messageId)}
+  }
   QtObject {
     id: host
     readonly property bool standalone: true
     readonly property string backendPath: String(Qt.resolvedUrl("scripts/mail-backend")).replace(/^file:\/\//,"")
-    readonly property var capabilities: ({agent:false,tray:false,mailto:false,notifications:false,appearance:false})
-    readonly property bool hasNotifications: false
+    readonly property var capabilities: ({agent:false,tray:false,mailto:false,notifications:true,appearance:false})
+    readonly property bool hasNotifications: true
+    readonly property string notificationError:mailNotifications.error
     readonly property string calendarPalettePath:root.home+"/.local/state/omarchy/current/theme/colors.toml"
     function configPath(name) { return root.home+"/.config/starlink-dashboard/mail/omamail/"+name }
     function cachePath(name) { return root.home+"/.cache/starlink-dashboard/mail/omamail/"+name }

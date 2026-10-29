@@ -790,11 +790,11 @@ Item {
 
   // ---------------------------------------------------------------- footer
 
-  // The toolbar sits on its own ground rather than on whatever happens to be
-  // scrolled behind it. Transparent, the message ran underneath the icons and
-  // through the rule, which read as text overlapping the controls.
+  // Reserve toolbar space even when the embedded surface is transparent,
+  // keeping the message viewport above the controls.
   Rectangle {
     id: footerBackdrop
+    objectName: "readerFooterBackdrop"
     anchors.left: parent.left
     // The reader begins after the splitter's forgiving hit target, while its
     // visible rule sits at that target's leading edge. Extend only the surface
@@ -803,13 +803,14 @@ Item {
     anchors.leftMargin: -root.leadingBoundaryOverlap
     anchors.right: parent.right
     anchors.bottom: parent.bottom
-    height: footer.implicitHeight + Style.space(10)
-    color: root.backgroundColor
+    height: footer.implicitHeight + Style.space(root.embeddedBody ? 4 : 10)
+    color: root.embeddedBody ? "transparent" : root.backgroundColor
     visible: footer.visible
 
     // Edge to edge, not inset with the buttons: it separates the toolbar from
     // the message, and that division runs the full width of the window.
     PanelSeparator {
+      visible: !root.embeddedBody
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: parent.top

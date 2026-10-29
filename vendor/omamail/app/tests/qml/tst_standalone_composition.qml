@@ -329,9 +329,10 @@ TestCase {
     for (var slot in colors) {
       var swatch = findChild(settings, "calendar-color-swatch-" + slot)
       verify(swatch, slot)
-      var expected = data.path !== "" ? colors[slot]
-        : String(slot === "accent" ? settings.accentColor
-          : slot === "red" ? settings.urgentColor : settings.dimColor)
+      // StarDock keeps its semantic accent override while reading other theme colors.
+      var expected = slot === "accent" ? String(settings.accentColor)
+        : data.path !== "" ? colors[slot]
+        : String(slot === "red" ? settings.urgentColor : settings.dimColor)
       tryCompare(swatch, "color", expected)
     }
     tryCompare(sourceSwatch, "color", data.path !== "" ? colors.blue : settings.dimColor)

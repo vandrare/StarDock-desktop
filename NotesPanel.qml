@@ -12,6 +12,8 @@ RowLayout {
   property color accent
   property color edge
   property color muted
+  property real bodyFontSize:14
+  property real listFontSize:12
   property real textScale: 1
   readonly property bool hasSelection: selectedIndex>=0 && selectedIndex<notes.length
   readonly property var selectedNote: hasSelection ? notes[selectedIndex] : ({title:"",body:""})
@@ -46,6 +48,7 @@ RowLayout {
           required property var modelData
           required property int index
           width: titles.width
+          font.pixelSize:root.listFontSize*root.textScale
           text: modelData.title.trim() || "Untitled note"
           checked: index===root.selectedIndex
           palette.buttonText: checked ? root.accent : root.fg
@@ -101,7 +104,7 @@ RowLayout {
         text: root.selectedNote.body
         placeholderText: root.hasSelection ? "Write your note…" : "Create a note to get started"
         color: root.fg; selectionColor: root.accent; selectedTextColor: root.bg
-        font.pixelSize: 14*root.textScale
+        font.pixelSize: root.bodyFontSize*root.textScale
         wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText
         selectByMouse: true; padding: 16
         background: Rectangle { radius: 10; color: root.bg; border.color: root.edge }

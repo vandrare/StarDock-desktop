@@ -22,6 +22,7 @@ def main():
         time.sleep(.1)
     subprocess.run(['quickshell', '-n', '-d', '-p', CONFIG], capture_output=True, check=True)
     try:
+        call('verifyPopupAppearance')
         for mode in ['month', 'week', 'day', 'agenda']:
             call('view', mode)
         call('details')

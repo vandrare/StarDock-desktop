@@ -45,6 +45,7 @@ Item {
   // keeps every existing plugin path; the standalone composition supplies a
   // narrow adapter for native operations and its bundled backend.
   property var platform: null
+  property var notificationHandler: null
   property var initialSettings: null
   readonly property var capabilities: platform && platform.capabilities
     ? platform.capabilities : ({ agent: true, tray: true, mailto: true, notifications: true })
@@ -1400,8 +1401,7 @@ Item {
     hostsEpoch += 1
   }
 
-  // The bar answers for all of them: a badge that counted only the mailbox you
-  // happen to be looking at is misleading.
+  // Count unread mail across all accounts.
   readonly property string barTooltip: {
     if (!ready) return pluginName + " · Not connected"
     var suffix = unreadTotal === 0 ? "No unread mail"

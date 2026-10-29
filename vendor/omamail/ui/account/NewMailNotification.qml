@@ -12,6 +12,7 @@ Item {
   required property string notificationAccent
   required property string pluginDir
   required property string accountId
+  property var notificationHandler:null
   property bool nativeNotifications: false
   property bool pluginNotifications: true
   signal activated(string targetAccountId, string messageId)
@@ -46,6 +47,10 @@ Item {
       for (var i = 0; i < list.length && i < 3; i++) names.push(Model.notificationTitle(list[i]))
       title = Model.pluralize(list.length, "new message")
       body = names.join(", ")
+    }
+    if(typeof notificationHandler === "function") {
+      notificationHandler(root.accountId,String(list[0].id || ""),title,body)
+      return
     }
     if (nativeNotifications && typeof Quickshell.showNotification === "function") {
       Quickshell.showNotification(root.accountId + ":" + String(list[0].id || ""),

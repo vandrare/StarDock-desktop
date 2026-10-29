@@ -49,6 +49,11 @@ Control {
   readonly property color surface: mix(bg, fg, 0.035)
   readonly property color edge: mix(bg, fg, 0.16)
   readonly property color muted: mix(bg, fg, 0.63)
+  property var popupStyleExtras:[]
+  readonly property var popupAppearance:Config.popupAppearance(configuration.popupAppearance)
+  PopupAppearanceManager {target:root;extraTargets:root.popupStyleExtras;overlay:root.Overlay.overlay;appearance:root.popupAppearance;backgroundColor:root.surface;borderColor:root.edge}
+  readonly property var fontSizes:Config.fontSizes(configuration.fontSizes)
+  readonly property real summaryTextScale:textScale*fontSizes.summaries/12
   readonly property real textScale: Math.max(0.85, Math.min(1.5, Number(configuration.textScale || 1)))
   property string demoNote: ""
   property var notesData: [{title:"First note",body:demoNote}]
@@ -66,6 +71,7 @@ Control {
   property string accountSettingsError:""
   property var accountPreferencesFlush:null
   property Component backupSettingsComponent
+  property Component emailSettingsComponent
   property Component calendarSettingsComponent
   signal accountsRequested()
   property Component calendarPanelComponent
@@ -86,9 +92,10 @@ Control {
   readonly property var mailPreviews: mailService ? (mailService.barMessages || []).slice(0,3) : []
   function openMail(accountId,messageId) {
     if(!mailService)return
-    if(accountId)mailService.switchTo(accountId)
+    if(accountId && mailService.switchTo(accountId)===false)return
     if(focusedPanel!=="email")promote(slots.indexOf("email"))
-    if(messageId)Qt.callLater(function(){if(root.mailService)root.mailService.select(messageId)})
+    var ownerService=mailService,ownerAccount=mailService.activeAccountId
+    if(messageId)Qt.callLater(function(){if(root.mailService===ownerService && ownerService.activeAccountId===ownerAccount)ownerService.select(messageId)})
   }
   readonly property string overviewSummary: {
     var parts=[]
@@ -108,6 +115,9 @@ Control {
   property var headlines: []
   property string feedStatus: "Loading news…"
   property var selectedArticle: ({title:"",body:"",published:"",publisher:"",url:""})
+  readonly property int sidebarWidthPercent:Config.sidebarWidth(configuration.sidebarWidthPercent)
+  readonly property bool rssEnabled:rssConfiguration.enabled
+  onRssEnabledChanged:if(!rssEnabled && article)article.close()
   readonly property var rssConfiguration: Config.rss(configuration.rss)
   readonly property real rssScrollSpeed: rssConfiguration.scrollSpeed
   property real previousScrollTime: 0
@@ -129,12 +139,13 @@ Control {
   }
   function openSettings() { settings.open() }
   function openArticle(index) {
-    if (!headlines.length) return
+    if (!rssEnabled || !headlines.length) return
     selectedNews = index % headlines.length
     selectedArticle = headlines[selectedNews]
     article.open()
   }
   function advanceNews(seconds) {
+    if(!rssEnabled)return
     var span = headlines.length * (feed.cardWidth + feed.spacing)
     if (span <= feed.width || rssScrollSpeed <= 0) return
     feed.contentX = (Math.max(0, feed.contentX) + rssScrollSpeed * seconds) % span
@@ -165,10 +176,10 @@ Control {
     if(panel && typeof panel.flushDrafts==="function")panel.flushDrafts(done)
     else if(done)done(true)
   }
-  function updateConfiguration(colors, scale, rss, popupWidth, weather, clock, fullscreenTitleSize, enabledModules, overview) {
+  function updateConfiguration(colors, scale, rss, popupWidth, weather, clock, fullscreenTitleSize, enabledModules, overview, sidebarWidthPercent, fontSizes, popupAppearance) {
     var selected=Config.modules(enabledModules === undefined ? configuration.enabledModules : enabledModules)
     var nextFocused=selected.indexOf(focusedPanel)>=0?focusedPanel:selected[0]
-    var value = { overview:Config.overview(overview===undefined?configuration.overview:overview), enabledModules:selected, fullscreenTitleSize:Config.sectionTitleSize(fullscreenTitleSize === undefined ? configuration.fullscreenTitleSize : fullscreenTitleSize), clock: Config.clock(clock === undefined ? configuration.clock : clock), colors: colors, textScale: scale, mainPanel: nextFocused, rss: Config.rss(rss === undefined ? configuration.rss : rss), popupWidthPercent: Config.popupWidth(popupWidth === undefined ? configuration.popupWidthPercent : popupWidth), weather: Config.weather(weather === undefined ? configuration.weather : weather) }
+    var value = { popupAppearance:Config.popupAppearance(popupAppearance===undefined?configuration.popupAppearance:popupAppearance), fontSizes:Config.fontOverrides(fontSizes===undefined?configuration.fontSizes:fontSizes), sidebarWidthPercent:Config.sidebarWidth(sidebarWidthPercent===undefined?configuration.sidebarWidthPercent:sidebarWidthPercent), overview:Config.overview(overview===undefined?configuration.overview:overview), enabledModules:selected, fullscreenTitleSize:Config.sectionTitleSize(fullscreenTitleSize === undefined ? configuration.fullscreenTitleSize : fullscreenTitleSize), clock: Config.clock(clock === undefined ? configuration.clock : clock), colors: colors, textScale: scale, mainPanel: nextFocused, rss: Config.rss(rss === undefined ? configuration.rss : rss), popupWidthPercent: Config.popupWidth(popupWidth === undefined ? configuration.popupWidthPercent : popupWidth), weather: Config.weather(weather === undefined ? configuration.weather : weather) }
     function commit(){
       if(root.accountPreferencesFlush)root.accountPreferencesFlush(function(ok){if(ok)writeCommit();else root.openSettings()})
       else writeCommit()
@@ -189,7 +200,9 @@ Control {
 
   Rectangle { anchors.fill: parent; color: root.bg }
   ColumnLayout {
+    objectName:"dashboardLayout"
     anchors.fill: parent
+    anchors.bottomMargin:root.shortWindow ? 10 : 18
     anchors.margins: root.shortWindow ? 12 : (root.narrow ? 18 : 28)
     spacing: root.shortWindow ? 10 : 18
     Item {
@@ -243,7 +256,8 @@ Control {
         objectName: "mainPanel"
         Layout.fillWidth: true
         Layout.fillHeight: true
-        Layout.preferredWidth: root.narrow ? 1 : 2
+        Layout.preferredWidth: root.narrow ? 1 : (root.fullscreenMode ? (panelGrid.width-panelGrid.columnSpacing)*(100-root.sidebarWidthPercent)/100 : 2)
+        Layout.minimumWidth:0
         Layout.preferredHeight: root.narrow ? 3 : 1
         Layout.minimumHeight: root.shortWindow ? 120 : 200
         color: root.surface; border.color: root.edge; radius: 16; clip: true
@@ -300,20 +314,22 @@ Control {
             sourceComponent:emailDetail
           }
           RowLayout {
+            visible: root.focusedPanel !== "email"
             Layout.fillWidth: true
             Rectangle { width: 5; height: 5; radius: 3; color: root.accent }
             Label { text: root.focusedPanel === "weather" ? "Open-Meteo · NOAA/NWS · OpenStreetMap" : root.focusedPanel === "notes" ? "Notes · saved automatically" : root.focusedPanel === "email" ? "Mail · StarMail" : root.focusedPanel === "calendar" ? "Calendar · StarMail" : "Live summaries · enabled modules"; color: root.muted; font.pixelSize: 10*root.textScale }
             Item { Layout.fillWidth: true }
-            Label { text: "01 / 0"+root.enabledModules.length; color: root.muted; font.family: root.themeFont; font.pixelSize: 10 }
           }
         }
       }
       GridLayout {
         id: summaries
+        objectName:"summaryColumn"
         uniformCellHeights: true
         uniformCellWidths: true
         Layout.fillWidth: true; Layout.fillHeight: !root.narrow
-        Layout.preferredWidth: 1
+        Layout.preferredWidth: !root.narrow && root.fullscreenMode ? (panelGrid.width-panelGrid.columnSpacing)*root.sidebarWidthPercent/100 : 1
+        Layout.minimumWidth:0
         Layout.preferredHeight: root.narrow ? (root.shortWindow ? 76 : 110) : 1
         columns: root.narrow ? root.slots.length : 1
         rowSpacing: 12; columnSpacing: 10
@@ -342,13 +358,13 @@ Control {
               RowLayout {
                 Layout.fillWidth: true
                 Label { text: root.moduleInfo(summary.panelKey).icon; font.family: root.themeFont; color: root.accent; font.pixelSize: 14 }
-                Label { text: root.moduleInfo(summary.panelKey).title; color: root.fg; font.pixelSize: 12*root.textScale; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
+                Label { objectName:"summaryTitle"+summary.index; text: root.moduleInfo(summary.panelKey).title; color: root.fg; font.pixelSize: 12*root.summaryTextScale; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
                 Label { text: "↗"; color: summary.hovered ? root.accent : root.muted; font.pixelSize: 15 }
               }
               Label {
-                visible: summary.panelKey!=="notes" && (summary.panelKey!=="weather" || !root.shortWindow)
-                text: summary.panelKey === "weather" ? (root.weatherData.current ? Weather.number(root.weatherData.current.temperature)+root.weatherData.units.temperature+" / "+Weather.number(root.weatherData.current.probability)+"% rain" : "Loading weather…") : summary.panelKey === "calendar" ? "Next on your calendar" : summary.panelKey === "notes" ? "An unfinished thought" : summary.panelKey === "email" ? (root.mailService && root.mailService.hasSavedAccounts ? root.mailService.unreadTotal+" unread" : "Connect a mailbox") : "Your day, at a glance"
-                color: root.fg; font.pixelSize: (root.narrow ? 11 : 17)*root.textScale; font.bold: !root.narrow; Layout.fillWidth: true; elide: Text.ElideRight
+                visible: summary.panelKey!=="notes" && summary.panelKey!=="calendar" && (summary.panelKey!=="weather" || !root.shortWindow)
+                text: summary.panelKey === "weather" ? (root.weatherData.current ? Weather.number(root.weatherData.current.temperature)+root.weatherData.units.temperature+" / "+Weather.number(root.weatherData.current.probability)+"% rain" : "Loading weather…") : summary.panelKey === "notes" ? "An unfinished thought" : summary.panelKey === "email" ? (root.mailService && root.mailService.hasSavedAccounts ? root.mailService.unreadTotal+" unread" : "Connect a mailbox") : "Your day, at a glance"
+                color: root.fg; font.pixelSize: (root.narrow ? 11 : 17)*root.summaryTextScale; font.bold: !root.narrow; Layout.fillWidth: true; elide: Text.ElideRight
               }
               ScrollView {
                 visible: summary.panelKey==="email"
@@ -370,11 +386,11 @@ Control {
                     contentItem:ColumnLayout {
                       id:mailPreviewText
                       spacing:2
-                      Label { text:(mailPreview.modelData.unread?"● ":"")+(mailPreview.modelData.subject || "(No subject)"); textFormat:Text.PlainText; color:root.accent; font.bold:mailPreview.modelData.unread; font.pixelSize:11*root.textScale; Layout.fillWidth:true; elide:Text.ElideRight }
-                      Label { text:mailPreview.modelData.from ? mailPreview.modelData.from.display : ""; textFormat:Text.PlainText; color:root.muted; font.pixelSize:10*root.textScale; Layout.fillWidth:true; elide:Text.ElideRight }
+                      Label { text:(mailPreview.modelData.unread?"● ":"")+(mailPreview.modelData.subject || "(No subject)"); textFormat:Text.PlainText; color:root.accent; font.bold:mailPreview.modelData.unread; font.pixelSize:11*root.summaryTextScale; Layout.fillWidth:true; elide:Text.ElideRight }
+                      Label { text:mailPreview.modelData.from ? mailPreview.modelData.from.display : ""; textFormat:Text.PlainText; color:root.muted; font.pixelSize:10*root.summaryTextScale; Layout.fillWidth:true; elide:Text.ElideRight }
                     }
                   }
-                  Label { anchors.fill:parent; visible:!root.mailPreviews.length; text:root.mailService && root.mailService.hasSavedAccounts ? "No recent messages" : "Open Email to connect a mailbox"; color:root.muted; font.pixelSize:11*root.textScale; wrapMode:Text.Wrap }
+                  Label { anchors.fill:parent; visible:!root.mailPreviews.length; text:root.mailService && root.mailService.hasSavedAccounts ? "No recent messages" : "Open Email to connect a mailbox"; color:root.muted; font.pixelSize:11*root.summaryTextScale; wrapMode:Text.Wrap }
                 }
               }
               ScrollView {
@@ -398,11 +414,11 @@ Control {
                     contentItem:ColumnLayout {
                       id:eventText
                       spacing:2
-                      Label {text:eventPreview.modelData.summary || "Untitled event";textFormat:Text.PlainText;color:root.accent;font.pixelSize:11*root.textScale;Layout.fillWidth:true;elide:Text.ElideRight}
-                      Label {text:Qt.formatDateTime(new Date(Number(eventPreview.modelData.start.ms)),eventPreview.modelData.start.allDay ? root.calendarPreferences.calendarDateFormat+" · 'All day'" : root.calendarPreferences.calendarDateFormat+" · "+(root.calendarPreferences.calendarTimeFormat==="24"?"HH:mm":"h:mm AP"));color:root.muted;font.pixelSize:10*root.textScale;Layout.fillWidth:true;elide:Text.ElideRight}
+                      Label {text:eventPreview.modelData.summary || "Untitled event";textFormat:Text.PlainText;color:root.accent;font.pixelSize:11*root.summaryTextScale;Layout.fillWidth:true;elide:Text.ElideRight}
+                      Label {text:Qt.formatDateTime(new Date(Number(eventPreview.modelData.start.ms)),eventPreview.modelData.start.allDay ? root.calendarPreferences.calendarDateFormat+" · 'All day'" : root.calendarPreferences.calendarDateFormat+" · "+(root.calendarPreferences.calendarTimeFormat==="24"?"HH:mm":"h:mm AP"));color:root.muted;font.pixelSize:10*root.summaryTextScale;Layout.fillWidth:true;elide:Text.ElideRight}
                     }
                   }
-                  Label {anchors.fill:parent;visible:!root.calendarPreviews.length;text:"No upcoming events in the next 31 days. Open Calendar to connect sources.";color:root.muted;font.pixelSize:11*root.textScale;wrapMode:Text.Wrap}
+                  Label {anchors.fill:parent;visible:!root.calendarPreviews.length;text:"No upcoming events in the next 31 days. Open Calendar to connect sources.";color:root.muted;font.pixelSize:11*root.summaryTextScale;wrapMode:Text.Wrap}
                 }
               }
               ScrollView {
@@ -429,8 +445,8 @@ Control {
                     contentItem: ColumnLayout {
                       id: previewContent
                       spacing: 2
-                      Label { text: preview.modelData.title; textFormat: Text.PlainText; color: root.accent; font.pixelSize: 11*root.textScale; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
-                      Label { text: preview.modelData.firstLine || "Empty note"; textFormat: Text.PlainText; color: root.muted; font.pixelSize: 10*root.textScale; Layout.fillWidth: true; elide: Text.ElideRight }
+                      Label { text: preview.modelData.title; textFormat: Text.PlainText; color: root.accent; font.pixelSize: 11*root.summaryTextScale; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
+                      Label { text: preview.modelData.firstLine || "Empty note"; textFormat: Text.PlainText; color: root.muted; font.pixelSize: 10*root.summaryTextScale; Layout.fillWidth: true; elide: Text.ElideRight }
                     }
                   }
                 }
@@ -450,18 +466,18 @@ Control {
                     spacing: 3
                     Label {
                       text: Qt.formatDate(new Date(modelData.date+"T12:00:00"),"ddd")+" "+Weather.icon(modelData.code)
-                      color: root.accent; font.pixelSize: (root.shortWindow?9:11)*root.textScale
+                      color: root.accent; font.pixelSize: (root.shortWindow?9:11)*root.summaryTextScale
                       Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                     }
                     Label {
                       text: Weather.number(modelData.high)+"° / "+Weather.number(modelData.low)+"°"
-                      color: root.fg; font.pixelSize: (root.shortWindow?9:11)*root.textScale
+                      color: root.fg; font.pixelSize: (root.shortWindow?9:11)*root.summaryTextScale
                       Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                     }
                     Label {
                       visible: !root.shortWindow && !root.narrow
                       text: Weather.number(modelData.probability)+"% rain"
-                      color: root.muted; font.pixelSize: 10*root.textScale
+                      color: root.muted; font.pixelSize: 10*root.summaryTextScale
                       Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                     }
                   }
@@ -470,7 +486,7 @@ Control {
               Label {
                 visible: summary.panelKey!=="notes" && summary.panelKey!=="email" && summary.panelKey!=="calendar" && !root.narrow && !root.shortWindow
                 text: summary.panelKey === "weather" ? (root.weatherData.alerts ? (root.weatherData.alerts.error || (root.weatherData.alerts.items.length?"⚠ "+root.weatherData.alerts.items.length+" active alert(s)":"No active NWS alerts")) : root.weatherStatus) : summary.panelKey === "email" ? "Email module ready to configure. No account connected." : root.overviewSummary
-                font.family: root.themeFont; color: root.muted; font.pixelSize: 11*root.textScale; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true
+                font.family: root.themeFont; color: root.muted; font.pixelSize: 11*root.summaryTextScale; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true
               }
               Item { visible: summary.panelKey!=="notes" && summary.panelKey!=="email" && summary.panelKey!=="calendar"; Layout.fillHeight: true }
               Label { visible: summary.panelKey!=="notes" && summary.panelKey!=="email" && summary.panelKey!=="calendar" && !root.narrow && !root.shortWindow; text: "CLICK TO EXPLORE"; color: root.accent; font.pixelSize: 9; font.letterSpacing: 1.2 }
@@ -482,15 +498,16 @@ Control {
 
     Rectangle {
       id: newsPanel
+      visible:root.rssEnabled
       objectName: "rssFeed"
       Layout.fillWidth: true
-      Layout.preferredHeight: root.shortWindow ? 125 : 210
+      Layout.preferredHeight: (root.shortWindow ? 125 : 210)+Math.max(0,root.fontSizes.rssHeadline*root.textScale-15)*(root.shortWindow?2:4)
       radius: 14; color: root.surface; border.color: root.edge
       ColumnLayout {
         anchors.fill: parent; anchors.margins: 16; spacing: 10
         RowLayout {
           Label { text: "\uf09e"; color: root.accent; font.family: root.themeFont; font.pixelSize: 13 }
-          Label { text: "THE READING ROOM"; color: root.fg; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1.4 }
+          Label { text: "RSS News Feeds"; color: root.fg; font.pixelSize: 10; font.bold: true; font.letterSpacing: 1.4 }
           Item { Layout.fillWidth: true }
           Label { text: root.feedStatus; textFormat: Text.PlainText; color: root.muted; font.pixelSize: 10; Layout.maximumWidth: newsPanel.width * .45; elide: Text.ElideRight }
           IconControl { glyph: "\uf021"; hint: "Refresh feeds"; implicitWidth: 24; implicitHeight: 24; onClicked: root.refreshNewsRequested() }
@@ -517,7 +534,7 @@ Control {
               anchors.fill: parent; anchors.margins: 12; spacing: 7
               RowLayout {
                 Layout.fillWidth: true; spacing: 12
-                Label { text: modelData.title; textFormat: Text.PlainText; color: root.accent; font.pixelSize: 15*root.textScale; font.bold: true; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
+                Label { objectName:"rssHeadline"+index; text: modelData.title; textFormat: Text.PlainText; color: root.accent; font.pixelSize: root.fontSizes.rssHeadline*root.textScale; font.bold: true; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
                 Label { text: root.articleDate(modelData.published); color: root.muted; font.pixelSize: 12*root.textScale; Layout.alignment: Qt.AlignTop; ToolTip.visible: hovered; ToolTip.text: modelData.published || "Publication date unavailable"; property bool hovered: dateHover.hovered; HoverHandler { id: dateHover } }
               }
               Label { visible: !root.shortWindow; text: modelData.body || "Open this article for more information."; textFormat: Text.PlainText; color: root.fg; font.pixelSize: 12*root.textScale; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; Layout.fillWidth: true }
@@ -530,6 +547,7 @@ Control {
       }
     }
     RowLayout {
+      objectName:"dashboardFooter"
       Layout.fillWidth: true
       Label { objectName:"appFooter"; text: "Scott Fors | Ver. "+root.appVersion; color: root.muted; font.pixelSize: 11*root.textScale }
       Item { Layout.fillWidth: true }
@@ -540,7 +558,7 @@ Control {
   Timer {
     objectName: "newsScrollTimer"
     interval: 16; repeat: true
-    running: root.visible && root.headlines.length * (feed.cardWidth + feed.spacing) > feed.width && root.rssScrollSpeed > 0 && !feedHover.hovered && !feed.moving && !settings.visible && !about.visible && !article.visible
+    running: root.visible && root.rssEnabled && root.headlines.length * (feed.cardWidth + feed.spacing) > feed.width && root.rssScrollSpeed > 0 && !feedHover.hovered && !feed.moving && !settings.visible && !about.visible && !article.visible
     onRunningChanged: root.previousScrollTime = Date.now()
     onTriggered: {
       var now = Date.now()
@@ -577,10 +595,12 @@ Control {
   }
   component SmallHeading: Label { color: root.fg; font.pixelSize: 11*root.textScale; font.bold: true; font.letterSpacing: 0.5 }
   component DemoDialog: Dialog {
+    id:dialog
+    readonly property bool dropShadow:root.popupAppearance.shadowSize>0
     modal: true; anchors.centerIn: parent; width: Math.min(root.width-32, 520)
     padding: 24; closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     palette.window: root.surface; palette.windowText: root.fg; palette.text: root.fg; palette.buttonText: root.fg; palette.button: root.bg; palette.base: root.bg; palette.highlight: root.accent
-    background: Rectangle { radius: 16; color: root.surface; border.color: root.edge }
+    background: PopupSurface {appearance:root.popupAppearance;color:root.surface;border.color:root.edge}
     header: Label { text: parent.title; color: root.fg; font.pixelSize: 22; font.bold: true; padding: 24; bottomPadding: 4 }
   }
 
@@ -633,6 +653,8 @@ Control {
       onSelectedIndexChanged: root.notesSelection=selectedIndex
       bg: root.bg; fg: root.fg; accent: root.accent; edge: root.edge; muted: root.muted
       textScale: root.textScale
+      bodyFontSize:root.fontSizes.notesBody
+      listFontSize:root.fontSizes.summaries
       onEdited: function(entries) { root.notesData=entries; root.notesEdited(entries) }
     }
   }
@@ -657,6 +679,7 @@ Control {
       objectName: "settingsEditor"
       accountError:root.accountSettingsError
       backupSettingsComponent:root.backupSettingsComponent
+      emailSettingsComponent:root.emailSettingsComponent
       calendarSettingsComponent:root.calendarSettingsComponent
       configuration: root.configuration
       locationResults: root.locationResults
@@ -664,7 +687,7 @@ Control {
       onLocationSearchRequested: function(query) { root.locationSearchRequested(query) }
       bg: root.bg; fg: root.fg; accent: root.accent; muted: root.muted; edge: root.edge
       systemBg: root.themeBackground; systemFg: root.themeForeground; systemAccent: root.themeAccent
-      onApplyRequested: function(colors,scale,rss,popupWidth,weather,clock,fullscreenTitleSize,enabledModules,overview) { root.updateConfiguration(colors,scale,rss,popupWidth,weather,clock,fullscreenTitleSize,enabledModules,overview); settings.close() }
+      onApplyRequested: function(colors,scale,rss,popupWidth,weather,clock,fullscreenTitleSize,enabledModules,overview,sidebarWidthPercent,fontSizes,popupAppearance) { root.updateConfiguration(colors,scale,rss,popupWidth,weather,clock,fullscreenTitleSize,enabledModules,overview,sidebarWidthPercent,fontSizes,popupAppearance); settings.close() }
       onCanceled: settings.close()
     }
   }
@@ -685,7 +708,7 @@ Control {
   DemoDialog {
     id: article
     objectName: "articleDialog"
-    title: "Reading room"
+    title: "RSS News Feeds"
     width: Math.min(root.width-32, root.availableScreenWidth * root.popupWidthPercent / 100)
     height: Math.min(root.height-32, implicitHeight)
     bottomPadding: 8
@@ -768,7 +791,7 @@ Control {
             text: ArticleText.markup(root.selectedArticle.body || "This feed includes a headline only. Open the original article to read more.",root.rssConfiguration.maxWords,root.selectedArticle.url)
             textFormat: Text.StyledText
             color: root.fg; linkColor: root.accent
-            font.family: root.themeFont; font.pixelSize: 15*root.textScale
+            font.family: root.themeFont; font.pixelSize: root.fontSizes.rssBody*root.textScale
             wrapMode: Text.Wrap; lineHeight: 1.45
             function lineInset(y) { return articlePicture.visible && y<articlePicture.height ? articlePicture.width+16 : 0 }
             onLineLaidOut: function(line) {

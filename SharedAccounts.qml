@@ -15,6 +15,16 @@ Dialog {
   property string fontFamily
   property bool picker:true
   property string notice:""
+  property bool signaturesFirst:false
+  function openAddAccount(){picker=true;notice="";open();setup.open()}
+  function openSignatures(){signaturesFirst=true;open();Qt.callLater(scrollToSignatures)}
+  function scrollToSignatures(){
+    if(!signaturesFirst || !settingsLoader.item)return
+    function find(item){if(item.objectName==="settings-signature-section")return item;var children=item.children || [];for(var i=0;i<children.length;i++){var hit=find(children[i]);if(hit)return hit}return null}
+    var target=find(settingsLoader.item)
+    if(target && target.visible)scroll.contentItem.contentY=Math.max(0,Math.min(target.mapToItem(settingsLoader.item,0,0).y,scroll.contentItem.contentHeight-scroll.availableHeight))
+  }
+  onClosed:signaturesFirst=false
   signal calendarRequested()
   parent:Overlay.overlay;anchors.centerIn:parent;modal:true
   title:"Accounts & calendars";padding:24
@@ -32,6 +42,8 @@ Dialog {
     id:scroll
     rightPadding:24;clip:true;contentWidth:availableWidth
     Loader {
+      id:settingsLoader
+      onLoaded:Qt.callLater(root.scrollToSignatures)
       width:scroll.availableWidth;active:root.opened
       sourceComponent:Component {
         MailUi.SettingsPage {

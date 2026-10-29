@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import QtTest
 import ".."
 import "../ArticleText.js" as ArticleText
@@ -9,7 +10,20 @@ Item {
   id: harness
   width: 1320; height: 940
   Dashboard { id: dashboard; anchors.fill: parent }
+  Popup {id:externalPopup;parent:Overlay.overlay;modal:true;width:200;height:100}
+  Loader {
+    id:latePopupLoader;active:false
+    sourceComponent:Component {Item {property alias popup:latePopup;Popup {id:latePopup;modal:true;width:200;height:100}}}
+  }
   property int mailFlushCount:0
+  property int emailSettingsSaves:0
+  Component {
+    id:emailSettingsProbe
+    Item {
+      function load(){}
+      function save(){harness.emailSettingsSaves++}
+    }
+  }
   Component {
     id:mailProbe
     Item {
@@ -38,6 +52,8 @@ Item {
     when: windowShown
     function init() {
       harness.width=1320; harness.height=940
+      dashboard.popupStyleExtras=[]
+      latePopupLoader.active=false
       dashboard.configuration = {colors: {}, textScale: 1, mainPanel: "overview"}
       dashboard.focusedPanel = "overview"
       dashboard.slots = ["weather", "calendar", "notes"]
@@ -48,6 +64,8 @@ Item {
       dashboard.emailPanelComponent=null
       dashboard.calendarPanelComponent=null
       dashboard.accountPreferencesFlush=null
+      dashboard.emailSettingsComponent=null
+      harness.emailSettingsSaves=0
       dashboard.calendarSettingsComponent=null
       dashboard.accountSettingsError=""
       dashboard.calendarEvents=[]
@@ -112,7 +130,7 @@ Item {
       var editor=findChild(dashboard,"settingsEditor")
       var draft=findChild(dashboard,"overviewDraft")
       draft.move(3,0,1);draft.setProperty(0,"shown",false)
-      editor.applyRequested({},1,undefined,33,undefined,undefined,36,dashboard.enabledModules,editor.overviewOptions())
+      editor.applyRequested({},1,undefined,33,undefined,undefined,36,dashboard.enabledModules,editor.overviewOptions(),33,{}, {})
       compare(dashboard.configuration.overview.order[0],"notes")
       compare(dashboard.configuration.overview.hidden[0],"notes")
       dashboard.openSettings();wait(20)
@@ -211,6 +229,21 @@ Item {
       dashboard.updateConfiguration({},1)
       verify(dashboard.configuration.enabledModules.indexOf("email")>=0)
       compare(dashboard.slots.length,3)
+    }
+    function test_notification_navigation_keeps_message_account_ownership() {
+      dashboard.configuration={colors:{},enabledModules:["weather","notes","email"]}
+      var calls=[]
+      var mail={activeAccountId:"first",switchTo:function(id){if(id==="removed")return false;this.activeAccountId=id;return true},select:function(id){calls.push({account:this.activeAccountId,message:id})}}
+      dashboard.mailService=mail
+      dashboard.openMail("first","first-message")
+      dashboard.openMail("second","second-message")
+      wait(20)
+      compare(calls.length,1)
+      compare(calls[0].account,"second")
+      compare(calls[0].message,"second-message")
+      dashboard.openMail("removed","must-not-open")
+      wait(20)
+      compare(calls.length,1)
     }
     function test_email_preview_opens_message_in_email_panel() {
       dashboard.configuration={colors:{},enabledModules:["overview","weather","notes","email"]}
@@ -411,6 +444,144 @@ Item {
       compare(String(dashboard.accent), "#abcdef")
       dashboard.updateConfiguration({}, 1)
       compare(String(dashboard.accent), "#334455")
+    }
+    function fontControl(key,name) {
+      var repeater=findChild(dashboard,"fontSizeRepeater")
+      function find(item){if(item.objectName===name)return item;var children=item.children || [];for(var i=0;i<children.length;i++){var hit=find(children[i]);if(hit)return hit}return null}
+      for(var i=0;i<repeater.count;i++)if(repeater.itemAt(i).modelData.key===key)return find(repeater.itemAt(i))
+      return null
+    }
+    function test_global_popup_style_controls_and_overlay() {
+      compare(Config.popupAppearance({}).shadowSize,20)
+      compare(Config.popupAppearance({shadowSize:90,overlayOpacity:-5}).shadowSize,64)
+      compare(Config.popupAppearance({overlayOpacity:-5}).overlayOpacity,0)
+      dashboard.openSettings();wait(20)
+      var settings=findChild(dashboard,"settingsDialog")
+      compare(settings.background.settings.shadowSize,20)
+      var size=findChild(dashboard,"popupShadowSize")
+      var color=findChild(dashboard,"popupShadowColor")
+      var opacity=findChild(dashboard,"popupOverlayOpacity")
+      size.value=32;color.text="#334455";opacity.value=60
+      compare(findChild(dashboard,"popupShadowPreview").settings.shadowSize,32)
+      compare(dashboard.popupAppearance.shadowSize,20)
+      settings.close()
+      dashboard.openSettings();wait(20)
+      compare(size.value,20);compare(color.text,"#000000");compare(opacity.value,35)
+      size.value=32;color.text="#334455";opacity.value=60
+      findChild(dashboard,"applySettings").clicked()
+      compare(dashboard.configuration.popupAppearance.shadowSize,32)
+      compare(dashboard.popupAppearance.overlayOpacity,60)
+      mouseClick(findChild(dashboard,"aboutButton"));wait(30)
+      var about=findChild(dashboard,"aboutDialog")
+      compare(about.background.settings.shadowSize,32)
+      compare(about.background.settings.shadowColor,"#334455")
+      compare(about.background.radius,16)
+      var dimmer=findChild(dashboard.Overlay.overlay,"popupDimmer")
+      verify(dimmer!==null,"App dialogs should use the shared backdrop")
+      verify(Math.abs(dimmer.color.a-.6)<.01)
+      about.close()
+      dashboard.popupStyleExtras=[externalPopup,latePopupLoader]
+      wait(20)
+      externalPopup.open();wait(20)
+      compare(externalPopup.background.settings.shadowSize,32)
+      externalPopup.close()
+      latePopupLoader.active=true;wait(20)
+      compare(latePopupLoader.item.popup.background.settings.shadowSize,32)
+      dashboard.configuration=Object.assign({},dashboard.configuration,{popupAppearance:{shadowSize:0,overlayOpacity:0}})
+      dashboard.openArticle(0);wait(20)
+      var article=findChild(dashboard,"articleDialog")
+      verify(!article.background.layer.enabled)
+      compare(article.background.settings.overlayOpacity,0)
+      article.close()
+    }
+    function test_content_font_defaults_previews_apply_and_cancel() {
+      compare(Config.fontSizes({}).emailBody,14)
+      compare(Config.fontSizes({}).notesBody,14)
+      compare(Config.fontSizes({}).summaries,12)
+      compare(Config.fontSizes({}).rssBody,14)
+      compare(Config.fontSizes({}).rssHeadline,15)
+      compare(Config.fontSizes({emailBody:99,summaries:1,rssHeadline:1}).emailBody,24)
+      compare(Config.fontSizes({summaries:1}).summaries,10)
+      compare(Config.fontSizes({rssHeadline:1}).rssHeadline,12)
+      dashboard.openSettings();wait(20)
+      var editor=findChild(dashboard,"settingsEditor")
+      var size=fontControl("notesBody","fontSize_notesBody")
+      var defaults=fontControl("notesBody","fontDefault_notesBody")
+      verify(defaults.checked && !size.enabled)
+      defaults.toggle();defaults.toggled()
+      for(var i=0;i<6;i++)size.increase();size.valueModified()
+      compare(fontControl("notesBody","fontPreview_notesBody").font.pixelSize,20)
+      compare(dashboard.fontSizes.notesBody,14)
+      findChild(dashboard,"settingsDialog").close()
+      dashboard.openSettings();wait(20)
+      verify(defaults.checked);compare(size.value,14)
+      defaults.toggle();defaults.toggled();for(var i=0;i<6;i++)size.increase();size.valueModified()
+      editor.updateFont("summaries",16)
+      editor.updateFont("rssBody",18)
+      editor.updateFont("rssHeadline",20)
+      findChild(dashboard,"applySettings").clicked()
+      compare(dashboard.configuration.fontSizes.notesBody,20)
+      compare(dashboard.fontSizes.summaries,16)
+      dashboard.promote(dashboard.slots.indexOf("notes"));wait(20)
+      compare(findChild(dashboard,"scratchpad").font.pixelSize,20)
+      compare(findChild(dashboard,"summaryTitle0").font.pixelSize,16)
+      compare(findChild(dashboard,"rssHeadline0").font.pixelSize,20)
+      dashboard.openArticle(0);wait(20)
+      compare(findChild(dashboard,"articleBody").font.pixelSize,18)
+      findChild(dashboard,"articleDialog").close()
+      dashboard.openSettings();wait(20)
+      defaults.toggle();defaults.toggled()
+      findChild(dashboard,"applySettings").clicked()
+      compare(dashboard.fontSizes.notesBody,14)
+      verify(dashboard.configuration.fontSizes.notesBody===undefined)
+      var settings=dashboard.configuration
+      settings=Object.assign({},settings,{textScale:1.5})
+      dashboard.configuration=settings;wait(20)
+      compare(findChild(dashboard,"scratchpad").font.pixelSize,21)
+    }
+    function test_fullscreen_sidebar_width_and_rss_space() {
+      dashboard.fullscreenMode=true
+      var main=findChild(dashboard,"mainPanel")
+      var side=findChild(dashboard,"summaryColumn")
+      var feed=findChild(dashboard,"rssFeed")
+      for(var i=0;i<2;i++){
+        var percent=i===0?20:35
+        dashboard.configuration={colors:{},sidebarWidthPercent:percent,rss:{enabled:true}}
+        wait(30)
+        verify(Math.abs(side.width/(side.width+main.width)*100-percent)<1,"Summary column should use the saved percentage")
+      }
+      var previousHeight=main.height
+      dashboard.configuration={colors:{},sidebarWidthPercent:25,rss:{enabled:false}}
+      wait(30)
+      verify(!feed.visible)
+      verify(main.height>previousHeight+150,"Panels must reclaim RSS space")
+      verify(!findChild(dashboard,"newsScrollTimer").running)
+      dashboard.openSettings();wait(20)
+      var editor=findChild(dashboard,"settingsEditor")
+      var rssSwitch=findChild(dashboard,"moduleSwitch_rss")
+      verify(!rssSwitch.checked)
+      compare(editor.moduleDraft.length,4)
+      var slider=findChild(dashboard,"sidebarWidthPercent")
+      compare(slider.from,20);compare(slider.to,35);compare(slider.value,25)
+      slider.value=30;rssSwitch.checked=true;rssSwitch.toggled()
+      findChild(dashboard,"applySettings").clicked()
+      compare(dashboard.configuration.sidebarWidthPercent,30)
+      verify(dashboard.configuration.rss.enabled)
+      dashboard.fullscreenMode=false
+    }
+    function test_footer_spacing_and_article_shadow() {
+      wait(30)
+      var footer=findChild(dashboard,"dashboardFooter")
+      var text=findChild(dashboard,"appFooter")
+      var feed=findChild(dashboard,"rssFeed")
+      var top=text.mapToItem(dashboard,0,0).y-feed.mapToItem(dashboard,0,feed.height).y
+      var bottom=dashboard.height-text.mapToItem(dashboard,0,text.height).y
+      verify(Math.abs(top-bottom)<2,"Footer should have equal space above and below its text")
+      dashboard.openArticle(0)
+      var popup=findChild(dashboard,"articleDialog")
+      verify(popup.dropShadow && popup.background.layer.enabled)
+      popup.close()
+      compare(Config.sidebarWidth(-10),20);compare(Config.sidebarWidth(90),35);compare(Config.sidebarWidth(undefined),33)
     }
     function test_responsive_layout() {
       harness.width = 1320; harness.height = 940
@@ -665,6 +836,23 @@ Item {
       verify(body.implicitHeight<referenceText.implicitHeight,"Text must regain full width below the image, rather than stay in a column")
       compare(body.lineInset(picture.height+1),0)
       popup.close()
+    }
+    function test_email_settings_section_applies_only_when_confirmed() {
+      dashboard.emailSettingsComponent=emailSettingsProbe
+      dashboard.openSettings()
+      var dialog=findChild(dashboard,"settingsDialog")
+      tryCompare(dialog,"visible",true)
+      var section=findChild(dashboard,"emailAccordion")
+      verify(section && !section.expanded)
+      compare(harness.emailSettingsSaves,0)
+      dialog.close()
+      compare(harness.emailSettingsSaves,0)
+      dashboard.openSettings()
+      tryCompare(dialog,"visible",true)
+      verify(!section.expanded)
+      findChild(dashboard,"applySettings").clicked()
+      compare(harness.emailSettingsSaves,1)
+      tryCompare(dialog,"visible",false)
     }
     function test_settings_start_collapsed_and_keep_scrollbar_gutter() {
       mouseClick(findChild(dashboard,"settingsButton"))

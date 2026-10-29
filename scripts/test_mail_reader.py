@@ -47,8 +47,14 @@ def main():
         <a href="javascript:alert(1)">Unsafe link</a><a href="https://example.com/article">Safe link</a>'''
         call('html',html)
         current=state()
-        assert current['fontSize']==current['titleFont']==12,current
+        assert current['fontSize']==14 and current['titleFont']==12,current
         assert current['mode']=='reader' and current['rich'] and current['blocked']>=1,current
+        call('contentFonts','18','16','1.25')
+        scaled=state()
+        assert scaled['fontSize']==23 and scaled['titleFont']==20,scaled
+        assert scaled['rich'] and 'Reader test' in scaled['body']
+        call('contentFonts','14','12','1')
+
         assert not current['allowed'] and not current['always'] and current['approvals']==0
         for mode in ['original','plain','reader']:
             call('readerMode',mode)

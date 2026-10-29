@@ -73,6 +73,7 @@ Item {
       service.activeIndex = -1
       service.refreshCurrent()
       host.opens = 0
+      service.notificationHandler = null
       Quickshell.notifications = []
     }
 
@@ -97,6 +98,17 @@ Item {
       process.stdout.text = output
       process.stdout.streamFinished()
       process.exited(0)
+    }
+
+    function test_embedded_host_receives_the_original_account_and_message() {
+      var notices=[]
+      service.notificationHandler=function(accountId,messageId,title,body){notices.push({accountId:accountId,messageId:messageId,title:title,body:body})}
+      service.findAccount(second).notify([{id:"embedded-message",subject:"Synthetic subject",from:{display:"Synthetic sender"}}])
+      compare(notices.length,1)
+      compare(notices[0].accountId,second)
+      compare(notices[0].messageId,"embedded-message")
+      verify(notices[0].title.indexOf("Synthetic sender")>=0)
+      compare(host.opens,0)
     }
 
     function test_click_opens_account_and_reader() {

@@ -7,6 +7,7 @@ ColumnLayout {
   id: root
   property string accountError:""
   property Component backupSettingsComponent
+  property Component emailSettingsComponent
   property Component calendarSettingsComponent
   signal accountsRequested()
   property var configuration: ({})
@@ -21,7 +22,11 @@ ColumnLayout {
   property string locationStatus: ""
   signal locationSearchRequested(string query)
   property color systemAccent
-  signal applyRequested(var colors, real textScale, var rss, real popupWidthPercent, var weather, var clock, real fullscreenTitleSize, var enabledModules, var overview)
+  signal applyRequested(var colors, real textScale, var rss, real popupWidthPercent, var weather, var clock, real fullscreenTitleSize, var enabledModules, var overview, real sidebarWidthPercent, var fontSizes, var popupAppearance)
+  function popupDraft(){return Config.popupAppearance({shadowSize:shadowSize.value,shadowColor:shadowColor.text,overlayOpacity:overlayOpacity.value})}
+  property var fontDraft:({})
+  function updateFont(key,value){var next=Object.assign({},fontDraft);if(value===null)delete next[key];else next[key]=value;fontDraft=next}
+  property bool rssEnabledDraft:true
   property var moduleDraft: Config.modules(undefined)
   signal canceled()
   spacing: 16
@@ -32,8 +37,15 @@ ColumnLayout {
     overviewDraft.clear()
     var overview=Config.overview(configuration.overview)
     overview.order.forEach(function(key){overviewDraft.append({moduleKey:key,shown:overview.hidden.indexOf(key)<0})})
+    var popup=Config.popupAppearance(configuration.popupAppearance)
+    shadowSize.value=popup.shadowSize;shadowColor.text=popup.shadowColor;overlayOpacity.value=popup.overlayOpacity
+    fontDraft=Config.fontOverrides(configuration.fontSizes)
+    rssEnabledDraft=Config.rss(configuration.rss).enabled
+    sidebarWidth.value=Config.sidebarWidth(configuration.sidebarWidthPercent)
     moduleDraft=Config.modules(configuration.enabledModules)
     modulesSection.expanded=false
+    emailSection.expanded=false
+    if(emailOptions.item)emailOptions.item.load()
     calendarSection.expanded=false
     if(calendarOptions.item)calendarOptions.item.load()
     var colors = configuration.colors || {}
@@ -65,7 +77,7 @@ ColumnLayout {
   function rssDraft() {
     var feeds=[]
     for(var i=0;i<feedDraft.count;i++) feeds.push({url:feedDraft.get(i).url.trim(),count:feedDraft.get(i).count})
-    return {feeds:feeds,scrollSpeed:speedSlider.value,maxWords:maxWordsSpin.value}
+    return {enabled:rssEnabledDraft,feeds:feeds,scrollSpeed:speedSlider.value,maxWords:maxWordsSpin.value}
   }
   function validFeeds() {
     for(var i=0;i<feedDraft.count;i++) if (!/^https?:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(feedDraft.get(i).url.trim())) return false
@@ -73,6 +85,36 @@ ColumnLayout {
   }
   Label {visible:!!root.accountError;text:root.accountError;color:root.accent;wrapMode:Text.Wrap;Layout.fillWidth:true}
   ListModel { id: feedDraft; objectName: "feedDraft" }
+  component FontSizeOption:ColumnLayout {
+    id:option
+    required property var modelData
+    Layout.fillWidth:true;spacing:6
+    Label {text:option.modelData.label;color:root.fg;Layout.fillWidth:true;wrapMode:Text.Wrap}
+    RowLayout {
+      Layout.fillWidth:true
+      SpinBox {
+        id:size
+        objectName:"fontSize_"+option.modelData.key
+        from:option.modelData.min;to:option.modelData.max;editable:true
+        value:root.fontDraft[option.modelData.key]===undefined?option.modelData.defaultSize:root.fontDraft[option.modelData.key]
+        enabled:root.fontDraft[option.modelData.key]!==undefined
+        onValueModified:root.updateFont(option.modelData.key,value)
+      }
+      CheckBox {
+        objectName:"fontDefault_"+option.modelData.key
+        text:"Use default ("+option.modelData.defaultSize+" px)"
+        checked:root.fontDraft[option.modelData.key]===undefined
+        palette.windowText:root.fg;palette.highlight:root.accent
+        onToggled:root.updateFont(option.modelData.key,checked?null:option.modelData.defaultSize)
+      }
+    }
+    Label {
+      objectName:"fontPreview_"+option.modelData.key
+      text:"Preview: The quick brown fox jumps over the lazy dog."
+      color:root.muted;font.pixelSize:size.value*scaleSlider.value
+      Layout.fillWidth:true;wrapMode:Text.Wrap
+    }
+  }
   component Section: ColumnLayout {
     id: section
     property string title
@@ -137,6 +179,8 @@ ColumnLayout {
           }
         }
         Label { text: "Keep at least three and at most four modules enabled. Email starts disabled."; color: root.muted; wrapMode: Text.Wrap; Layout.fillWidth: true }
+        Switch {objectName:"moduleSwitch_rss";text:"RSS News Feeds";checked:root.rssEnabledDraft;palette.windowText:root.fg;palette.highlight:root.accent;onToggled:root.rssEnabledDraft=checked}
+        Label {text:"RSS is independent of the 3–4 panel modules. Turning it off gives its space to the panels.";color:root.muted;wrapMode:Text.Wrap;Layout.fillWidth:true;font.pixelSize:11}
       }
       Section {
         id: appearance
@@ -152,8 +196,27 @@ ColumnLayout {
         Field { id: accentField; objectName: "accentOverride"; placeholderText: String(root.systemAccent); validator: RegularExpressionValidator { regularExpression: /#[0-9a-fA-F]{6}|/ } }
         Label { text: "Text size · " + Math.round(scaleSlider.value*100) + "%"; color: root.fg }
         Slider { id: scaleSlider; Layout.fillWidth: true; from: .85; to: 1.5; stepSize: .05; palette.highlight: root.accent }
+        Label {text:"Content font sizes";color:root.fg;font.bold:true}
+        Repeater {objectName:"fontSizeRepeater";model:Config.fontOptions;delegate:FontSizeOption {}}
+        Label {text:"Popup appearance";color:root.fg;font.bold:true}
+        Label {text:"Shadow size · "+shadowSize.value+" px (0 disables shadows)";color:root.fg}
+        SpinBox {id:shadowSize;objectName:"popupShadowSize";from:0;to:64;editable:true}
+        Label {text:"Shadow color (#RRGGBB or #AARRGGBB)";color:root.fg}
+        Field {id:shadowColor;objectName:"popupShadowColor";placeholderText:"#000000";validator:RegularExpressionValidator {regularExpression:/#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}|/}}
+        Label {text:"Background dimming · "+Math.round(overlayOpacity.value)+"% opacity";color:root.fg}
+        Slider {id:overlayOpacity;objectName:"popupOverlayOpacity";Layout.fillWidth:true;from:0;to:100;stepSize:1;palette.highlight:root.accent}
+        Label {text:"0% leaves the app undimmed; 100% makes the backdrop black. These settings apply to app dialogs and confirmations.";color:root.muted;Layout.fillWidth:true;wrapMode:Text.Wrap;font.pixelSize:11}
+        Rectangle {
+          objectName:"popupStylePreview"
+          Layout.fillWidth:true;Layout.preferredHeight:100+shadowSize.value*2
+          color:root.bg;radius:8
+          Rectangle {anchors.fill:parent;radius:8;color:Qt.rgba(0,0,0,overlayOpacity.value/100)}
+          PopupSurface {objectName:"popupShadowPreview";anchors.centerIn:parent;width:180;height:64;appearance:root.popupDraft();color:root.bg;border.color:root.edge;Label {anchors.centerIn:parent;text:"Popup preview";color:root.fg}}
+        }
         Label { text: "Article popup width · " + Math.round(popupWidthSlider.value) + "% of screen"; color: root.fg }
         Slider { id: popupWidthSlider; objectName: "popupWidthPercent"; Layout.fillWidth: true; from: 20; to: 100; stepSize: 1; palette.highlight: root.accent }
+        Label {text:"Fullscreen summary column width · "+Math.round(sidebarWidth.value)+"%";color:root.fg}
+        Slider {id:sidebarWidth;objectName:"sidebarWidthPercent";Layout.fillWidth:true;from:20;to:35;stepSize:1;palette.highlight:root.accent}
         Label { text: "Fullscreen section title size (px)"; color: root.fg }
         SpinBox { id: fullscreenTitleSize; objectName: "fullscreenTitleSize"; from: 12; to: 72; editable: true; palette.text: root.fg; palette.base: root.bg; palette.button: root.bg; palette.buttonText: root.fg }
         Label { text: "Title bar font size (px)"; color: root.fg }
@@ -167,7 +230,7 @@ ColumnLayout {
           Layout.fillWidth: true
           model: Config.dateFormats.map(function(format) { return Qt.formatDate(new Date(2026,9,25),format)+" · "+format })
         }
-        AppButton { text: "Reset appearance to theme"; onClicked: { bgField.text=""; fgField.text=""; accentField.text=""; scaleSlider.value=1; popupWidthSlider.value=33 } }
+        AppButton { text: "Reset appearance to theme"; onClicked: { bgField.text=""; fgField.text=""; accentField.text=""; scaleSlider.value=1; popupWidthSlider.value=33;sidebarWidth.value=33;fontDraft=({});shadowSize.value=20;shadowColor.text="#000000";overlayOpacity.value=35 } }
       }
       Section {
         id: weatherSection
@@ -231,10 +294,18 @@ ColumnLayout {
         Label { text: root.validFeeds() ? "" : "Enter a valid http:// or https:// URL for every feed."; visible: text.length>0; color: root.accent; wrapMode: Text.Wrap; Layout.fillWidth: true }
       }
       Section {
+        id:emailSection
+        objectName:"emailAccordion"
+        title:"Email"
+        subtitle:"Mail checks, notifications, remote images and signatures"
+        Loader {id:emailOptions;Layout.fillWidth:true;sourceComponent:root.emailSettingsComponent}
+        Label {visible:!root.emailSettingsComponent;text:"Enable Email or Calendar to manage mail preferences.";color:root.muted;wrapMode:Text.Wrap;Layout.fillWidth:true}
+      }
+      Section {
         id:calendarSection
         objectName:"calendarAccordion"
-        title:"Calendar & accounts"
-        subtitle:"Calendar preferences, reminders and shared mail accounts"
+        title:"Calendar"
+        subtitle:"Calendar preferences, sources and reminders"
         Loader {id:calendarOptions;Layout.fillWidth:true;sourceComponent:root.calendarSettingsComponent}
         Label {visible:!root.calendarSettingsComponent;text:"Enable Calendar or Email to manage account preferences.";color:root.muted;wrapMode:Text.Wrap;Layout.fillWidth:true}
       }
@@ -274,14 +345,15 @@ ColumnLayout {
     AppButton {
       objectName: "applySettings"
       text: "Apply"
-      enabled: bgField.acceptableInput && fgField.acceptableInput && accentField.acceptableInput && root.validFeeds() && weatherOptions.valid && root.moduleDraft.length>=3 && root.moduleDraft.length<=4
+      enabled: bgField.acceptableInput && fgField.acceptableInput && accentField.acceptableInput && shadowColor.acceptableInput && root.validFeeds() && weatherOptions.valid && root.moduleDraft.length>=3 && root.moduleDraft.length<=4
       onClicked: {
         var colors={}
         if(bgField.text) colors.background=bgField.text
         if(fgField.text) colors.foreground=fgField.text
         if(accentField.text) colors.accent=accentField.text
+        if(emailOptions.item)emailOptions.item.save()
         if(calendarOptions.item)calendarOptions.item.save()
-        root.applyRequested(colors,scaleSlider.value,root.rssDraft(),popupWidthSlider.value,weatherOptions.draft(),{fontSize:titleBarFontSize.value,hourFormat:clockHours.currentIndex===1?"24":"12",dateFormat:Config.dateFormats[clockDate.currentIndex]},fullscreenTitleSize.value,root.moduleDraft,root.overviewOptions())
+        root.applyRequested(colors,scaleSlider.value,root.rssDraft(),popupWidthSlider.value,weatherOptions.draft(),{fontSize:titleBarFontSize.value,hourFormat:clockHours.currentIndex===1?"24":"12",dateFormat:Config.dateFormats[clockDate.currentIndex]},fullscreenTitleSize.value,root.moduleDraft,root.overviewOptions(),sidebarWidth.value,Config.fontOverrides(root.fontDraft),root.popupDraft())
       }
     }
   }

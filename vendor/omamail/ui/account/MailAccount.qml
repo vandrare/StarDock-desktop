@@ -2440,6 +2440,7 @@ Item {
 
   NewMailNotification {
     id: newMailNotification
+    notificationHandler:root.platform ? root.platform.notificationHandler || null : null
     pluginDir: root.pluginDir
     accountId: root.accountId
     notificationForeground: root.notificationForeground

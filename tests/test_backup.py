@@ -34,6 +34,26 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(files['accounts']['accounts'], [{'id': 'a', 'label': 'Mail'}])
         self.assertEqual(len(files['dashboard']['rss']['feeds']), 1)
 
+    def test_popup_appearance_is_included_in_backup(self):
+        self.put('dashboard',{'popupAppearance':{'shadowSize':30,'shadowColor':'#123456','overlayOpacity':45,'unknown':'SECRET'}})
+        path=self.backup()
+        self.assertEqual(self.manager.preview(path)['files']['dashboard']['popupAppearance'],{'shadowSize':30,'shadowColor':'#123456','overlayOpacity':45})
+        self.assertNotIn('SECRET',path.read_text())
+
+    def test_font_overrides_are_backed_up_without_unknown_fields(self):
+        self.put('dashboard', {'fontSizes':{'emailBody':18,'notesBody':20,'summaries':14,'rssBody':16,'rssHeadline':20,'unknownSecret':'SECRET'}})
+        path=self.backup()
+        saved=self.manager.preview(path)['files']['dashboard']['fontSizes']
+        self.assertEqual(saved,{'emailBody':18,'notesBody':20,'summaries':14,'rssBody':16,'rssHeadline':20})
+        self.assertNotIn('SECRET',path.read_text())
+
+    def test_sidebar_width_and_rss_visibility_survive_backup(self):
+        self.put('dashboard', {'sidebarWidthPercent':25, 'rss':{'enabled':False,'feeds':[]}})
+        path=self.backup()
+        saved=self.manager.preview(path)['files']['dashboard']
+        self.assertEqual(saved['sidebarWidthPercent'],25)
+        self.assertFalse(saved['rss']['enabled'])
+
     def test_live_notes_and_preview_are_separate(self):
         self.put('notes', [{'title': 'Old', 'body': 'old'}])
         result = self.manager.run({'op': 'backup', 'live': {'notes': [{'title': 'Live', 'body': 'private body'}]}})

@@ -28,6 +28,7 @@ def main():
         settle()
         assert call("verifyInitialMessage").startswith("PASS")
         assert call("verifyStyle").startswith("PASS")
+        assert call("verifyPopupAppearance").startswith("PASS")
         call("seedUnsubscribe"); settle()
         assert call("verifyUnsubscribeToolbar").startswith("PASS")
         for mode in ['reply', 'replyAll', 'forward']:

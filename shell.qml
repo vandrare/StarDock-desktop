@@ -14,7 +14,7 @@ ShellRoot {
   property color accentColor: "#6cb6ff"
   property string fontFamily: "JetBrainsMono Nerd Font"
   property string themeName: "Omarchy"
-  property var config: ({enabledModules:Config.modules(undefined), fullscreenTitleSize:36, clock: Config.clock({}), colors: {}, textScale: 1, mainPanel: "overview", popupWidthPercent: 33, rss: Config.rss({}), weather: Config.weather({})})
+  property var config: ({popupAppearance:Config.popupAppearance({}),fontSizes:({}),sidebarWidthPercent:33, enabledModules:Config.modules(undefined), fullscreenTitleSize:36, clock: Config.clock({}), colors: {}, textScale: 1, mainPanel: "overview", popupWidthPercent: 33, rss: Config.rss({}), weather: Config.weather({})})
   property bool configLoaded: false
   property var rssCache: ({})
   property var news: []
@@ -24,6 +24,7 @@ ShellRoot {
   onConfigChanged: if (configLoaded) { activeMapZoom=Config.weather(config.weather).mapZoom; refreshRss(); refreshWeather() }
 
   function refreshRss() {
+    if(!Config.rss(config.rss).enabled){refreshPending=false;if(rssProcess.running)rssProcess.running=false;newsStatus="RSS news feeds are disabled";return}
     if (rssProcess.running) { refreshPending = true; return }
     var feeds = Config.rss(config.rss).feeds
     if (!feeds.length) { news = []; newsStatus = "Add an RSS feed in Settings"; return }
@@ -59,6 +60,7 @@ ShellRoot {
     stderr: StdioCollector { waitForEnd: true }
     onExited: function(code) {
       rssDeadline.stop()
+      if(!Config.rss(root.config.rss).enabled)return
       try {
         if (code !== 0) throw new Error("fetch failed")
         root.applyFeedResult(output)
@@ -67,7 +69,7 @@ ShellRoot {
     }
   }
   Timer { id: rssDeadline; interval: 45000; onTriggered: { rssProcess.running = false; root.newsStatus = "Feed request timed out · try Refresh" } }
-  Timer { interval: 600000; running: root.configLoaded; repeat: true; onTriggered: root.refreshRss() }
+  Timer { interval: 600000; running: root.configLoaded && Config.rss(root.config.rss).enabled; repeat: true; onTriggered: root.refreshRss() }
 
 
   property var weatherData: ({})
@@ -202,7 +204,7 @@ ShellRoot {
         var value = JSON.parse(text())
         if (value && typeof value === "object" && !Array.isArray(value)) {
           var allowed = Config.modules(value.enabledModules)
-          root.config = { overview:Config.overview(value.overview), enabledModules:allowed, fullscreenTitleSize:Config.sectionTitleSize(value.fullscreenTitleSize), clock: Config.clock(value.clock), colors: value.colors || {}, textScale: Math.max(.85, Math.min(1.5, Number(value.textScale) || 1)), mainPanel: allowed.indexOf(value.mainPanel) >= 0 ? value.mainPanel : allowed[0], rss: Config.rss(value.rss), popupWidthPercent: Config.popupWidth(value.popupWidthPercent), weather: Config.weather(value.weather) }
+          root.config = { popupAppearance:Config.popupAppearance(value.popupAppearance), fontSizes:Config.fontOverrides(value.fontSizes), sidebarWidthPercent:Config.sidebarWidth(value.sidebarWidthPercent), overview:Config.overview(value.overview), enabledModules:allowed, fullscreenTitleSize:Config.sectionTitleSize(value.fullscreenTitleSize), clock: Config.clock(value.clock), colors: value.colors || {}, textScale: Math.max(.85, Math.min(1.5, Number(value.textScale) || 1)), mainPanel: allowed.indexOf(value.mainPanel) >= 0 ? value.mainPanel : allowed[0], rss: Config.rss(value.rss), popupWidthPercent: Config.popupWidth(value.popupWidthPercent), weather: Config.weather(value.weather) }
         }
       } catch (_error) {}
       root.configLoaded = true
@@ -235,12 +237,17 @@ ShellRoot {
     sourceComponent: Component {
       EmailService {
         calendarEnabled:dashboard.enabledModules.indexOf("calendar")>=0
+        emailEnabled:dashboard.enabledModules.indexOf("email")>=0
         dialogWindow:dashboard.Window.window
         windowOpen: window.visible && dashboard.focusedPanel==="email"
         onCalendarOpenRequested:function(eventId,eventStart){window.visible=true;dashboard.openCalendarId(eventId,eventStart)}
         onOpenRequested: function(accountId,messageId){ window.visible=true;dashboard.openMail(accountId,messageId) }
       }
     }
+  }
+  Component {
+    id:emailPreferencesComponent
+    EmailPreferences {service:dashboard.mailService;fg:dashboard.fg;muted:dashboard.muted;saveError:mailHostLoader.item?mailHostLoader.item.preferencesError:"";onSignaturesRequested:sharedAccounts.openSignatures();onAccountsRequested:sharedAccounts.open();onAddAccountRequested:sharedAccounts.openAddAccount()}
   }
   Component {
     id:calendarPreferencesComponent
@@ -335,6 +342,7 @@ ShellRoot {
       themeForeground: root.foregroundColor
       themeAccent: root.accentColor
       themeFont: root.fontFamily
+      popupStyleExtras:[sharedAccounts]
       themeName: root.themeName
       enabled:!root.restoreBusy
       backupSettingsComponent:backupOptionsComponent
@@ -342,6 +350,7 @@ ShellRoot {
       accountSettingsError:mailHostLoader.item?mailHostLoader.item.preferencesError:""
       accountPreferencesFlush:function(done){if(mailHostLoader.item)mailHostLoader.item.flushPreferences(done);else done(true)}
       calendarEvents:mailHostLoader.item ? mailHostLoader.item.calendarEvents : []
+      emailSettingsComponent:mailHostLoader.item ? emailPreferencesComponent : null
       calendarSettingsComponent:mailHostLoader.item ? calendarPreferencesComponent : null
       calendarPanelComponent: Component {
         CalendarPanel {
@@ -353,6 +362,8 @@ ShellRoot {
       }
       emailPanelComponent: Component {
         EmailPanel {
+          bodyFontSize:dashboard.fontSizes.emailBody
+          messageListFontSize:dashboard.fontSizes.summaries
           service: dashboard.mailService
           onAccountsRequested:sharedAccounts.open()
           dateFormat:dashboard.clockSettings.dateFormat
